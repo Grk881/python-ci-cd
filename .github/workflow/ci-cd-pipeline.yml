@@ -3,38 +3,11 @@ name: CI/CD Pipeline for Python Service
 on:
   push:
     branches:
-      - main
-  pull_request:
-    branches:
-      - main
+      - main  # Deploy when code is pushed to the 'main' branch
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'  # Define your Python version
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-
-      - name: Run tests
-        run: |
-          pytest  # Or any other test framework you're using
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'  # Deploy only on main branch push
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
@@ -49,14 +22,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v2
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1  # Replace with your AWS region
-
-      - name: Deploy to AWS
+      - name: Run tests
         run: |
-          # Example: Deploy to AWS Lambda or ECS
-          aws ecs update-service --cluster my-cluster --service my-service --force-new-deployment
+          pytest  # Run unit tests
+
+  deploy:
+    needs: build  # Only run if the build job succeeds
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'  # Only deploy on main branch push
+
+    steps:
+      - name: Checkout code  # Step 1: Check out the code from GitHub
+        uses: actions/checkout@v3
+
+      - name: Install dependencies  # Step 2: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Deploy to EC2  # Step 3: SSH into EC2 and deploy
+        uses: appleboy/ssh-action@v0.1.6  # GitHub action to SSH into the instance
+        with:
+          host: ${{ secrets.EC2_HOST }}  # Public IP of your EC2 instance
+          username: ec2-user  # The default EC2 user (use 'ubuntu' for Ubuntu instances)
+          key: ${{ secrets.EC2_SSH_KEY }}  # Private key for SSH access
+          script: |
+            cd /path/to/app  # Navigate to the directory where your app should be
+            git pull origin main  # Pull the latest code from the repository
+            pip install -r requirements.txt  # Install dependencies on EC2
+            sudo systemctl restart my-python-service  # Restart the service (replace this with your service command)
